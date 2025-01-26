@@ -1,0 +1,1 @@
+https://kyfw.12306.cn/otn/leftTicket/query?leftTicketDTO.train_date=2025-02-09&leftTicketDTO.from_station=GZQ&leftTicketDTO.to_station=QTP&purpose_codes=ADULT
