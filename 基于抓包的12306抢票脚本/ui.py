@@ -3,7 +3,9 @@ from tkinter import ttk
 from datetime import datetime
 from tkcalendar import DateEntry  # 导入tkcalendar中的DateEntry
 import Getticket
+import user
 import time
+import ntplib
 import json
 import threading
 
@@ -18,6 +20,7 @@ class TicketUI:
         self.root = root
         self.root.title("12306 抢票助手")
         self.root.geometry("800x700")
+        self.ntpserver = user.ntpserver
 
         #数据初始化
         self.user_frame = None
@@ -251,41 +254,78 @@ class TicketUI:
             web.user.end_station = self.end_station_entry.get().strip()
             web.user.train_date = self.date_entry.get().strip()
             web.user.TRAIN_ID_LIST = self.train_id_entry.get().strip().split(',')
-            self._save_user_data()
-            # 验证时间格式
-            target_time_str = self.target_time_entry.get().strip()
-            target_time = datetime.strptime(target_time_str, "%Y-%m-%d %H:%M:%S")
-            self._log(f"抢票设置时间为: {target_time_str}")
-            self._log(f"用户: {web.user.NAME}, 车次: {web.user.TRAIN_ID_LIST}, 座位等级: {web.user.TICKET_CLASS}")
-            self._log("等待抢票时间到达...")
+            self._save_user_data()#保存用户信息
 
-            #检查登录状态
+            #输出用户信息
+            self._log(f"用户: {web.user.NAME}, "
+                      f"车次: {web.user.TRAIN_ID_LIST},"
+                      f" 座位等级: {web.user.TICKET_CLASS},"
+                      f"上车站:{web.user.start_station},"
+                      f"下车站:{web.user.end_station},"
+                      f"出发时间:{web.user.train_date}")
+
+            # 初始化创建 ntplib 客户端对象,并对比本地时间
+            client = ntplib.NTPClient()
+            self._log(f"当前使用ntp服务器为：{self.ntpserver}")
+            try:
+                dt = datetime.fromtimestamp(int(client.request(self.ntpserver).tx_time))
+                self._log(f"当前NTP时间: {dt}")
+                self._log(f"当前本地时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            except Exception as e:
+                self._log(f"获取NTP时间失败: {e}")
+                self._log("建议检查NTP服务器地址！")
+                self._log(f"当前本地时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+            # 首次检查登录状态
             self._log(f"正在检查登录状态...")
             result = web.check_login_status()
             if result:
-                self._log(f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 self._log(f"登陆状态正常")
             else:
                 self._log(f"登录状态异常，请重新登录！")
                 return 0
-            last_login_time = datetime.now().minute  # 记录上一次登录的分钟数
+
+            # 验证时间格式
+            target_time_str = self.target_time_entry.get().strip()
+            target_time = datetime.strptime(target_time_str, "%Y-%m-%d %H:%M:%S")  # 将str转化为UTC标准时间格式
+            target_time_unix = time.mktime(target_time.timetuple())  # 将UTC转化为unix时间戳
+            pattern =""#初始化抢票时间模式
+            self._log(f"抢票设置时间为: {target_time_str}")
+            self._log("等待抢票时间到达...")
+            # 首先使用本地时间，直到开票前一分钟
+            before_now_local=datetime.now()
             while True:
-                now = datetime.now()
+                now_local = datetime.now()
                 # 每两分钟检查一次登录状态
-                if (now.minute % 2) == 0 and now.minute != last_login_time:
+                if (now_local.minute % 2) == 0 and now_local.minute != before_now_local.minute:
                     self._log(f"正在检查登录状态...")
                     result = web.check_login_status()
                     if result:
-                        last_login_time = now.minute
-                        self._log(f"当前时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+                        before_now_local = now_local
+                        self._log(f"当前时间: {now_local.strftime('%Y-%m-%d %H:%M:%S')}")
                         self._log(f"登陆状态正常")
                     else:
                         self._log(f"登录状态异常，请重新登录！")
                         break  # 登录失败退出循环
-                # 判断当前时间是到达目标时间
-                if now >= target_time:
+                if (target_time-now_local).total_seconds() <= 60 :
+                    self._log("距离开票不足一分钟！尝试切换为NTP授时模式！")
+                    try:
+                        ntp = client.request(self.ntpserver).tx_time  # 测试ntp服务器响应，返回值精度可达小数后七位
+                        self._log("成功切换为NTP授时模式！")
+                        self._log(f"当前时间戳为:{ntp}")
+                        self._log(f"目标时间戳为：{target_time_unix}")
+                        pattern = "ntp"
+                        break
+                    except Exception as e:
+                        self._log(f"获取NTP时间失败: {e}")
+                        self._log("切换为本地时间模式！")
+                        pattern = "local"
+                        break
+
+            #切入本地时间模式
+            while pattern == "local":
+                if datetime.now()>= target_time:
                     # 执行抢票程序
-                    # time.sleep(0.1)
                     self._log("抢票时间到达，开始抢票...")
                     result = web.run()
                     if result:
@@ -294,9 +334,24 @@ class TicketUI:
                     else:
                         self._log("抢票失败，请重试！")
                         break  # 执行完退出循环
-                time.sleep(0.5)  # 间隔 0.5 秒再检查一次
+
+            #切入NTP授时模式
+            while pattern == "ntp":
+                now_ntp = client.request(self.ntpserver).tx_time
+                # 判断当前时间是到达目标时间,并不再进行登录检查
+                if now_ntp>= target_time_unix:
+                    # 执行抢票程序
+                    self._log("抢票时间到达，开始抢票...")
+                    result = web.run()
+                    if result:
+                        self._log("抢票成功！请10分钟内到在 12306 支付订单。")
+                        break
+                    else:
+                        self._log("抢票失败，请重试！")
+                        break  # 执行完退出循环
+
         except ValueError:
-            self._log("时间格式错误，请检查输入格式！")
+            self._log("数据格式错误，请检查输入格式！")
         except ConnectionError:
             self._log("网络异常，请检查网络连接！")
         except Exception as e:

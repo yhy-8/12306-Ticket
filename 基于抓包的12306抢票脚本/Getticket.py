@@ -20,9 +20,8 @@ class GetTicket:
         self._key_check_isChange = ""    #是否修改密钥
         self._allEncStr = ""    #加密串
         self.session = requests.Session()
-
-        self.logswitch=True  #是否开启日志记录(True或者False)，开启后会降低整体运行速度，正常使用不建议开启
-        self.sysbusy="系统繁忙，请稍后重试！"  #response的繁忙提示语句
+        self.sysbusy = "系统繁忙，请稍后重试！"  # response的繁忙提示语句
+        self.logswitch=user.logswitch
 
     '''
     获取cookie
@@ -422,11 +421,11 @@ class GetTicket:
         self.session.cookies.set('_uab_collina', uab_collina_value, domain='kyfw.12306.cn')
         times = 0
         while times < 10:
-            times = times + 1  # 最多重复10次
+            times = times + 1  # 最多重复10次，实际上超过5次大概率断开连接
             response = self.session.post(url, data=data)
             mylog.logrecord("create_order_request_url", url, self.logswitch)
             mylog.logrecord("create_order_request_data",data,self.logswitch)
-            mylog.logrecord("create_order_response_test", response.text, self.logswitch)
+            mylog.logrecord("create_order_response_text", response.text, self.logswitch)
             if self.sysbusy in response.text:
                 print("服务器繁忙！正在重试！")
                 continue
@@ -482,7 +481,7 @@ class GetTicket:
             try:
                 self._REPEAT_SUBMIT_TOKEN = re.findall("var globalRepeatSubmitToken = '(.*?)'", response.text)[0]
                 self._key_check_isChange = re.findall("'key_check_isChange':'(.*?)'", response.text)[0]
-                print("订单初始化成功")
+                print("订单初始化成功！")
             except IndexError:
                 print("提取数据失败！")
         else:
@@ -522,14 +521,13 @@ class GetTicket:
         if response.status_code == 200:
             try:
                 response = response.json()
-                print("乘车人信息查询成功")
-
+                print("乘车人信息查询成功！")
                 self._allEncStr = response['data']['normal_passengers'][0]['allEncStr']
             except ValueError:
                 print("响应不是合法的 JSON 格式：", response.text)
         else:
             print("乘车人信息查询失败！")
-            print(f"请求失败，状态码：{response.status_code}，响应内容：{response.text}")
+            print(f"请求失败，状态码：{response.status_code}")
 
     '''
     检查订单信息
@@ -569,7 +567,7 @@ class GetTicket:
                     break
                 else:
                     if response.json().get("status"):
-                        print("检查订单信息成功")
+                        print("检查订单信息成功！")
                         break
                     else:
                         print("检查订单信息失败！正在重试！")
@@ -801,8 +799,7 @@ class GetTicket:
             if  result:
                 break
         try_time = 0
-        max_try_time = 1
-        while try_time < max_try_time:
+        while try_time < user.max_try_time:
             # 遍历车次
             for train in self.user.TRAIN_ID_LIST:
                 # 创建订单

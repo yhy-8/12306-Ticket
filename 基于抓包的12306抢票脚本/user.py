@@ -1,18 +1,20 @@
 import urllib.request as r
 
+#用户可以自定义的参数
+ntpserver = 'ntp.aliyun.com' #ntp服务器网址
+max_try_time=5   #抢票尝试次数
+logswitch=False   #是否开始日志记录(True或者False)，开启后会降低抢票速度，建议正常使用不开启
+
+
 # 由于火车站使用三字码，所以我们需要先获取站点对应的三字码
 code_url = r"https://kyfw.12306.cn/otn/resources/js/framework/station_name.js"
 Code_Data = r.urlopen(code_url).read().decode('utf-8')
 
 
-# print(code_data)
-
 # 处理获得的字符串，返回字典类型
 def zip_dic(code_data):
     code_data = code_data[20:]
-    # print(code_data)
     list_code = code_data.split("|")
-    # print(list_code)
     a = 1
     b = 2
     t1 = []
