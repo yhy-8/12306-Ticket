@@ -8,6 +8,7 @@ import time
 import ntplib
 import json
 import threading
+import numpy as np
 
 # 实例化 GetTicket 类
 web = Getticket.GetTicket()
@@ -311,44 +312,71 @@ class TicketUI:
                     self._log("距离开票不足一分钟！尝试切换为NTP授时模式！")
                     try:
                         ntp = client.request(self.ntpserver).tx_time  # 测试ntp服务器响应，返回值精度可达小数后七位
-                        self._log("成功切换为NTP授时模式！")
-                        self._log(f"当前时间戳为:{ntp}")
-                        self._log(f"目标时间戳为：{target_time_unix}")
                         pattern = "ntp"
                         break
                     except Exception as e:
                         self._log(f"获取NTP时间失败: {e}")
-                        self._log("切换为本地时间模式！")
                         pattern = "local"
                         break
 
             #切入本地时间模式
-            while pattern == "local":
-                if datetime.now()>= target_time:
-                    # 执行抢票程序
-                    self._log("抢票时间到达，开始抢票...")
-                    result = web.run()
-                    if result:
-                        self._log("抢票成功！请10分钟内到在 12306 支付订单。")
-                        break
-                    else:
-                        self._log("抢票失败，请重试！")
-                        break  # 执行完退出循环
+            if pattern == "local":
+                self._log("切换为本地时间模式！")
+                while True:
+                    if datetime.now()>= target_time:
+                        # 执行抢票程序
+                        self._log("抢票时间到达，开始抢票...")
+                        result = web.run()
+                        if result:
+                            self._log("抢票成功！请10分钟内到在 12306 支付订单。")
+                            break
+                        else:
+                            self._log("抢票失败，请重试！")
+                            break  # 执行完退出循环
 
-            #切入NTP授时模式
-            while pattern == "ntp":
-                now_ntp = client.request(self.ntpserver).tx_time
-                # 判断当前时间是到达目标时间,并不再进行登录检查
-                if now_ntp>= target_time_unix:
-                    # 执行抢票程序
-                    self._log("抢票时间到达，开始抢票...")
-                    result = web.run()
-                    if result:
-                        self._log("抢票成功！请10分钟内到在 12306 支付订单。")
-                        break
-                    else:
-                        self._log("抢票失败，请重试！")
-                        break  # 执行完退出循环
+            # 切入NTP授时模式
+            if pattern == "ntp":
+                self._log("成功切换为NTP授时模式！正在进行NTP时间校准！")
+                #与NTP授时校准
+                adjust_times = 0
+                all_star_time = []
+                while adjust_times<user.adjust_times_max:
+                    try:
+                        #获取ntp时间戳，与目标时间戳作差，最后加上time.perf_counter的当前数值，得到启动抢票时的time.perf_counter数值
+                        npt_time = client.request(self.ntpserver).tx_time
+                        star_time=float(time.perf_counter())+(float(target_time_unix)-float(npt_time))
+                        all_star_time.append(star_time)
+                        adjust_times += 1
+                    except Exception as e:
+                        print(f"NTP请求失败: {str(e)}")
+                #使用IQR（四分位数间距）来去除离群值,避免网络波动导致误差
+                Q1 = np.percentile(all_star_time, 25)
+                Q3 = np.percentile(all_star_time, 75)
+                IQR = Q3 - Q1
+                # 定义离群值的阈值（1.5倍 IQR）
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                # 去除离群值
+                filtered_all_star_time = [x for x in all_star_time if lower_bound <= x <= upper_bound]
+                # 计算过滤后的数据的平均值
+                filtered_star_time = np.mean(filtered_all_star_time)
+                self._log("已完成时间校准！")
+                self._log("注意:以下时间戳为本系统时间戳，并非NTP授时时间戳")
+                self._log(f"当前时间戳为:{time.perf_counter()}")
+                self._log(f"目标时间戳为：{filtered_star_time}")
+
+                while True:
+                    # 判断当前时间是否到达目标时间,并不再进行登录检查
+                    if time.perf_counter() >= (float(filtered_star_time)-user.advanced):
+                        # 执行抢票程序
+                        self._log("抢票时间到达，开始抢票...")
+                        result = web.run()
+                        if result:
+                            self._log("抢票成功！请10分钟内到在 12306 支付订单。")
+                            break
+                        else:
+                            self._log("抢票失败，请重试！")
+                            break  # 执行完退出循环
 
         except ValueError:
             self._log("数据格式错误，请检查输入格式！")

@@ -3,7 +3,6 @@ import json
 import base64
 import time
 import user
-import mylog
 import re
 from random import randint
 from PIL import Image
@@ -22,6 +21,17 @@ class GetTicket:
         self.session = requests.Session()
         self.sysbusy = "系统繁忙，请稍后重试！"  # response的繁忙提示语句
         self.logswitch=user.logswitch
+
+    '''
+    log文本记录
+    '''
+    @staticmethod
+    def _logrecord(filename, data, switch):
+        if switch:
+            with open(f'log/{str(filename)}.txt', 'w') as file:
+                file.write(str(data))
+        else:
+            return None
 
     '''
     获取cookie
@@ -336,8 +346,8 @@ class GetTicket:
                     'secret_str': info[0]  # 加密的字符串
                 }
             print('获取车票信息成功')
-            mylog.logrecord("get_tickets_url", url, self.logswitch)
-            mylog.logrecord("get_tickets_response",self.tickets,self.logswitch)
+            self._logrecord("get_tickets_url", url, self.logswitch)
+            self._logrecord("get_tickets_response",self.tickets,self.logswitch)
             return 1
         except requests.exceptions.JSONDecodeError:
             print('获取内容失败，官方未出票')
@@ -423,9 +433,9 @@ class GetTicket:
         while times < 10:
             times = times + 1  # 最多重复10次，实际上超过5次大概率断开连接
             response = self.session.post(url, data=data)
-            mylog.logrecord("create_order_request_url", url, self.logswitch)
-            mylog.logrecord("create_order_request_data",data,self.logswitch)
-            mylog.logrecord("create_order_response_text", response.text, self.logswitch)
+            self._logrecord("create_order_request_url", url, self.logswitch)
+            self._logrecord("create_order_request_data",data,self.logswitch)
+            self._logrecord("create_order_response_text", response.text, self.logswitch)
             if self.sysbusy in response.text:
                 print("服务器繁忙！正在重试！")
                 continue
@@ -473,9 +483,9 @@ class GetTicket:
         self.session.cookies.update({'_uab_collina': uab_collina_value})
         response = self.session.post(url, data=data)
 
-        mylog.logrecord("init_order_url",url,self.logswitch)
-        mylog.logrecord("init_order_request_data",data,self.logswitch)
-        #mylog.logrecord("init_order_response_text",response.text,self.logswitch) #这里的response会返回一个网页
+        self._logrecord("init_order_url",url,self.logswitch)
+        self._logrecord("init_order_request_data",data,self.logswitch)
+        #self._logrecord("init_order_response_text",response.text,self.logswitch) #这里的response会返回一个网页
 
         if response.status_code == 200:
             try:
@@ -515,9 +525,9 @@ class GetTicket:
             'REPEAT_SUBMIT_TOKEN': self._REPEAT_SUBMIT_TOKEN
         }
         response = self.session.post(url, data=data)
-        mylog.logrecord("check_passengers_url", url, self.logswitch)
-        mylog.logrecord("check_passengers_request_data", data, self.logswitch)
-        mylog.logrecord("check_passengers_response_text", response.text, self.logswitch)
+        self._logrecord("check_passengers_url", url, self.logswitch)
+        self._logrecord("check_passengers_request_data", data, self.logswitch)
+        self._logrecord("check_passengers_response_text", response.text, self.logswitch)
         if response.status_code == 200:
             try:
                 response = response.json()
@@ -555,9 +565,9 @@ class GetTicket:
         while times < 10:
             times = times + 1  # 最多重复10次
             response = self.session.post(url, data=data)
-            mylog.logrecord("check_order_info_url", url, self.logswitch)
-            mylog.logrecord("check_order_info_request_data", data, self.logswitch)
-            mylog.logrecord("check_order_info_response_text", response.text, self.logswitch)
+            self._logrecord("check_order_info_url", url, self.logswitch)
+            self._logrecord("check_order_info_request_data", data, self.logswitch)
+            self._logrecord("check_order_info_response_text", response.text, self.logswitch)
             if response.status_code == 200:
                 if self.sysbusy in response.text:
                     print("服务器繁忙！正在重试！")
@@ -618,9 +628,9 @@ class GetTicket:
         while times < 10:
             times = times + 1  # 最多重复10次
             response = self.session.post(url, data=data)
-            mylog.logrecord("submit_order_url", url, self.logswitch)
-            mylog.logrecord("submit_order_request_data", data, self.logswitch)
-            mylog.logrecord("submit_order_response_text", response.text, self.logswitch)
+            self._logrecord("submit_order_url", url, self.logswitch)
+            self._logrecord("submit_order_request_data", data, self.logswitch)
+            self._logrecord("submit_order_response_text", response.text, self.logswitch)
             if self.sysbusy in response.text:
                 print("服务器繁忙！正在重试！")
                 continue
@@ -680,9 +690,9 @@ class GetTicket:
         while times < 10:
             times = times + 1  # 最多重复10次
             response = self.session.post(url, data=data)
-            mylog.logrecord("confirm_order_url", url, self.logswitch)
-            mylog.logrecord("confirm_order_request_data", data, self.logswitch)
-            mylog.logrecord("confirm_order_response_text", response.text, self.logswitch)
+            self._logrecord("confirm_order_url", url, self.logswitch)
+            self._logrecord("confirm_order_request_data", data, self.logswitch)
+            self._logrecord("confirm_order_response_text", response.text, self.logswitch)
             if response.status_code != 200:
                 print(f"请求失败！状态码：{response.status_code}  正在重试！")
                 continue
@@ -719,9 +729,9 @@ class GetTicket:
         del self.session.cookies['_uab_collina']
         while True:
             response = self.session.post(url, data=data)
-            mylog.logrecord("base_log_url", url, self.logswitch)
-            mylog.logrecord("base_log_request_data", data, self.logswitch)
-            mylog.logrecord("base_log_response_text", response.text, self.logswitch)
+            self._logrecord("base_log_url", url, self.logswitch)
+            self._logrecord("base_log_request_data", data, self.logswitch)
+            self._logrecord("base_log_response_text", response.text, self.logswitch)
             if response.status_code == 200:
                 print("记录日志成功！")
                 break
@@ -760,8 +770,8 @@ class GetTicket:
         while times<10:
             times=times+1 #最多重复10次
             response = self.session.get(url)
-            mylog.logrecord("queue_order_url", url, self.logswitch)
-            mylog.logrecord("queue_order_response_text", response.text, self.logswitch)
+            self._logrecord("queue_order_url", url, self.logswitch)
+            self._logrecord("queue_order_response_text", response.text, self.logswitch)
             if response.status_code == 200:
                 data = response.json()
                 # 获取排队等待时间
