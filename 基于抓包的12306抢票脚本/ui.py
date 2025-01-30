@@ -41,6 +41,7 @@ class TicketUI:
         self.trip_frame = None
         self.seat_position = None
         self.seat_class = None
+        self.passenger_class = None
         self.phone_entry = None
         self.id_entry = None
         self.gender_entry = None
@@ -55,12 +56,19 @@ class TicketUI:
             "高级动卧": [""],
             "高级软卧": [""],
             "一等卧": [""],
-            "动卧": [""],
+            "动卧": ["下铺","上铺"],
             "二等卧": [""],
             "硬座": [""],
             "软座": [""],
-            "硬卧": [""],
-            "软卧": [""]
+            "硬卧": ["下铺","中铺","上铺"],
+            "软卧": ["下铺","上铺"]
+        }
+        #定义优惠类型
+        self.passenger_options={
+            "成人":"1",
+            "儿童":"2",
+            "学生":"3",
+            "残军":"4"
         }
         self.seat_position_codes ={
             "特等座": "P",
@@ -124,6 +132,13 @@ class TicketUI:
         tk.Label(self.user_frame, text="座位位置:", font=("楷体", 12)).grid(row=2, column=2, padx=5)
         self.seat_position = ttk.Combobox(self.user_frame, font=("楷体", 12), state="readonly")
         self.seat_position.grid(row=2, column=3, padx=5)
+
+        #优惠类型选择
+        tk.Label(self.user_frame, text="类型:", font=("楷体", 12)).grid(row=0, column=4, padx=5)
+        self.passenger_class = ttk.Combobox(self.user_frame, font=("楷体", 12), state="readonly",width=5)
+        self.passenger_class['values'] = list(self.passenger_options.keys())
+        self.passenger_class.grid(row=0, column=5, padx=1)
+
 
         # 行程信息设置
         self.trip_frame = tk.LabelFrame(self.root, text="行程信息", font=("楷体", 12))
@@ -249,6 +264,7 @@ class TicketUI:
             web.user.PHONE_NUMBER = self.phone_entry.get().strip()
             web.user.TICKET_CLASS = self.seat_position_codes[self.seat_class.get()]
             web.user.choose_seats = self.seat_position.get()
+            web.user.PASSENGER_CLASS=self.passenger_options[self.passenger_class.get()]
             web.user.start_city = self.start_city_entry.get().strip()
             web.user.start_station = self.start_station_entry.get().strip()
             web.user.end_city = self.end_city_entry.get().strip()
@@ -284,7 +300,7 @@ class TicketUI:
                 self._log(f"登陆状态正常")
             else:
                 self._log(f"登录状态异常，请重新登录！")
-                return 0
+                return None
 
             # 验证时间格式
             target_time_str = self.target_time_entry.get().strip()
@@ -371,11 +387,14 @@ class TicketUI:
                         # 执行抢票程序
                         self._log("抢票时间到达，开始抢票...")
                         result = web.run()
-                        if result:
+                        if result == 1:
                             self._log("抢票成功！请10分钟内到在 12306 支付订单。")
                             break
                         else:
-                            self._log("抢票失败，请重试！")
+                            if result == 2:
+                                self._log("抢票失败！已没有车票！程序退出！")
+                            else:
+                                self._log("抢票失败！程序退出！")
                             break  # 执行完退出循环
 
         except ValueError:
@@ -394,6 +413,7 @@ class TicketUI:
             "phone": self.phone_entry.get().strip(),
             "seat_class": self.seat_class.get(),
             "seat_position": self.seat_position.get(),
+            "passenger_position":self.passenger_class.get(),
             "start_city": self.start_city_entry.get().strip(),
             "start_station": self.start_station_entry.get().strip(),
             "end_city": self.end_city_entry.get().strip(),
@@ -417,6 +437,7 @@ class TicketUI:
                 self.phone_entry.insert(0, data.get("phone", ""))
                 self.seat_class.set(data.get("seat_class", ""))
                 self.seat_position.set(data.get("seat_position", ""))
+                self.passenger_class.set(data.get("passenger_position", ""))
                 self.start_city_entry.insert(0, data.get("start_city", ""))
                 self.start_station_entry.insert(0, data.get("start_station", ""))
                 self.end_city_entry.insert(0, data.get("end_city", ""))

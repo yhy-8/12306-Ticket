@@ -1,12 +1,13 @@
 import urllib.request as r
 
-#用户可以自定义的参数
+#用户可自定义参数
 ntpserver = 'ntp.aliyun.com' #ntp服务器网址
-max_try_time=5   #抢票尝试次数
-logswitch=False   #是否开始日志记录(True或者False)，开启后会降低抢票速度，建议正常使用不开启
-advanced=0.0     #提前发送请求时间，单位(s)。适当地提前可以规避网络延迟，过于提前会导致重复请求失败，达到五次会断开连接！目前仅NTP模式可用
-adjust_times_max=80  #ntp授时校准，取平均
-
+max_try_times = 2   #整体流程抢票尝试次数
+logswitch = False   #是否开始日志记录，开启后会降低抢票速度，建议正常使用不开启
+ischoose_seat=ischoose_beds = False #是否启用座位/床位选择
+advanced = 0.0     #提前发送请求时间，单位(s)。适当地提前可以规避网络延迟，过于提前会导致重复请求失败，达到五次会断开连接！目前仅NTP模式可用
+adjust_times_max = 80  #ntp授时校准时的请求次数
+grabfunction_max_try_times = 6 #抢票各部分函数最多重复次数
 
 # 由于火车站使用三字码，所以我们需要先获取站点对应的三字码
 code_url = r"https://kyfw.12306.cn/otn/resources/js/framework/station_name.js"

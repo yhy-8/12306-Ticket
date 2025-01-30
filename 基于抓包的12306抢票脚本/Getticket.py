@@ -18,9 +18,15 @@ class GetTicket:
         self._REPEAT_SUBMIT_TOKEN = ""    #全局重复提交令牌
         self._key_check_isChange = ""    #是否修改密钥
         self._allEncStr = ""    #加密串
+        self.ischoose_seat=False #内部参数，判断最终是否可选座位
+        self.ischoose_beds=False #内部参数，判断最终是否可选床位
+        self.noticket=False #是否已经没有车票
         self.session = requests.Session()
         self.sysbusy = "系统繁忙，请稍后重试！"  # response的繁忙提示语句
-        self.logswitch=user.logswitch
+        self.logswitch=self.user.logswitch
+        self.ischoose_seat_control=self.user.ischoose_seat   #可以调参数控制是否启用选座位
+        self.ischoose_beds_control = self.user.ischoose_beds  #可以调参数控制是否启用选床位
+
 
     '''
     log文本记录
@@ -31,6 +37,36 @@ class GetTicket:
                 file.write(str(data))
         else:
             return None
+
+    '''
+    判断是否能选座位
+    '''
+    def _ischoose_seat(self,response,choose_type):
+        if self.ischoose_seat_control:
+            data = response.get('data', {})
+            can_seats = data.get('canChooseSeats', 'N')
+            seats_choose=["P","9","M","O"]#特等座 P,商务座 9,一等座 M,二等座 O
+            if choose_type in seats_choose:
+                return can_seats == 'Y'
+            else:
+                return False
+        else:
+            return False
+
+    '''
+    判断是否能选床铺
+    '''
+    def _ischoose_beds(self,response,choose_type):
+        if self.ischoose_beds_control:
+            data = response.get('data', {})
+            can_beds = data.get('canChooseBeds', 'N')
+            beds_choose = ["3", "4", "F"]  # 硬卧 3,软卧 4,动卧 F
+            if choose_type in beds_choose:
+                return can_beds == 'Y'
+            else:
+                return False
+        else:
+            return False
 
     '''
     获取cookie
@@ -397,12 +433,12 @@ class GetTicket:
         }
         data = {
             'secretStr': unquote(self.tickets[train]['secret_str']),
-            'train_date': user.train_date,
-            'back_train_date': str(datetime.today().date()),
+            'train_date': self.user.train_date,
+            'back_train_date': '',
             'tour_flag': 'dc',  # dc 单程 wf 往返
-            'purpose_codes': 'ADULT',  # 成人
-            'query_from_station_name': user.start_city,  # 车站/城市信息字典[from_station]
-            'query_to_station_name': user.end_city,  # 车站/城市信息字典[to_station]
+            'purpose_codes': '00',
+            'query_from_station_name': self.user.start_city,  # 车站/城市信息字典[from_station]
+            'query_to_station_name': self.user.end_city,  # 车站/城市信息字典[to_station]
             'bed_level_info': '',
             'seat_discount_info': self.tickets[train]['seat_discount_info'],
             'undefined': ''
@@ -429,24 +465,24 @@ class GetTicket:
         uab_collina_value = self.generate_uab_collina()
         self.session.cookies.set('_uab_collina', uab_collina_value, domain='kyfw.12306.cn')
         times = 0
-        while times < 10:
-            times = times + 1  # 最多重复10次，实际上超过5次大概率断开连接
+        while times < self.user.grabfunction_max_try_times:
+            times += 1
             response = self.session.post(url, data=data)
             self._logrecord("create_order_request_url", url)
             self._logrecord("create_order_request_data",data)
             self._logrecord("create_order_response_text", response.text)
-            if self.sysbusy in response.text:
+            if response.status_code != 200:
+                print(f"请求失败！状态码：{response.status_code}  正在重试！")
+                continue
+            elif self.sysbusy in response.text:
                 print("服务器繁忙！正在重试！")
                 continue
-            if response.status_code == 200:
-                if response.json().get("status"):
-                    print("创建订单成功！")
-                    break
-                else:
-                    print("创建订单失败！正在重试！")
-                    continue
+
+            if response.json().get("status"):
+                print("创建订单成功！")
+                break
             else:
-                print(f"请求失败！状态码: {response.status_code}   正在重试！")
+                print("创建订单失败！正在重试！")
                 continue
 
     '''
@@ -480,21 +516,27 @@ class GetTicket:
         # 更新cookies
         uab_collina_value = self.generate_uab_collina()
         self.session.cookies.update({'_uab_collina': uab_collina_value})
-        response = self.session.post(url, data=data)
-
-        self._logrecord("init_order_url",url)
-        self._logrecord("init_order_request_data",data)
-        #self._logrecord("init_order_response_text",response.text,self.logswitch) #这里的response会返回一个网页
-
-        if response.status_code == 200:
+        times = 0
+        while times < self.user.grabfunction_max_try_times:
+            times += 1
+            response = self.session.post(url, data=data)
+            self._logrecord("init_order_url", url)
+            self._logrecord("init_order_request_data", data)
+            # self._logrecord("init_order_response_text",response.text,self.logswitch) #这里的response会返回一个网页
+            if response.status_code != 200:
+                print(f"请求失败！状态码：{response.status_code}  正在重试！")
+                continue
+            elif self.sysbusy in response.text:
+                print("服务器繁忙！正在重试！")
+                continue
             try:
                 self._REPEAT_SUBMIT_TOKEN = re.findall("var globalRepeatSubmitToken = '(.*?)'", response.text)[0]
                 self._key_check_isChange = re.findall("'key_check_isChange':'(.*?)'", response.text)[0]
                 print("订单初始化成功！")
+                break
             except IndexError:
-                print("提取数据失败！")
-        else:
-            print(f"请求失败，状态码: {response.status_code}")
+                print("提取数据失败！正在重试！")
+                continue
 
     '''
     查询乘车人信息
@@ -523,20 +565,27 @@ class GetTicket:
             "_json_att": "",
             'REPEAT_SUBMIT_TOKEN': self._REPEAT_SUBMIT_TOKEN
         }
-        response = self.session.post(url, data=data)
-        self._logrecord("check_passengers_url", url)
-        self._logrecord("check_passengers_request_data", data)
-        self._logrecord("check_passengers_response_text", response.text)
-        if response.status_code == 200:
+        times=0
+        while times < self.user.grabfunction_max_try_times:
+            times += 1
+            response = self.session.post(url, data=data)
+            self._logrecord("check_passengers_url", url)
+            self._logrecord("check_passengers_request_data", data)
+            self._logrecord("check_passengers_response_text", response.text)
+            if response.status_code != 200:
+                print(f"请求失败！状态码：{response.status_code}  正在重试！")
+                continue
+            elif self.sysbusy in response.text:
+                print("服务器繁忙！正在重试！")
+                continue
+
             try:
-                response = response.json()
                 print("乘车人信息查询成功！")
-                self._allEncStr = response['data']['normal_passengers'][0]['allEncStr']
+                self._allEncStr = response.json()['data']['normal_passengers'][0]['allEncStr']
+                break
             except ValueError:
-                print("响应不是合法的 JSON 格式：", response.text)
-        else:
-            print("乘车人信息查询失败！")
-            print(f"请求失败，状态码：{response.status_code}")
+                print(f"响应不是合法的 JSON 格式：{response.text},正在重试！")
+                continue
 
     '''
     检查订单信息
@@ -547,9 +596,9 @@ class GetTicket:
         data = {
             "cancel_flag": "2",  # 订单状态，0为取消，2为未取消
             "bed_level_order_num": "000000000000000000000000000000",  # 床位级别订单号
-            "passengerTicketStr": f"{self.user.TICKET_CLASS},{self.user.GENDER},1,{self.user.NAME},1,{self.user.ID},{self.user.PHONE_NUMBER},N,{self._allEncStr}",
+            "passengerTicketStr": f"{self.user.TICKET_CLASS},{self.user.GENDER},{self.user.PASSENGER_CLASS},{self.user.NAME},1,{self.user.ID},{self.user.PHONE_NUMBER},N,{self._allEncStr}",
             # 乘客的票据信息，包含乘客的座位、身份证、票价等信息。
-            "oldPassengerStr": f"{self.user.NAME},1,{self.user.ID},1_",  # 需要与 passengerTicketStr 保持一致
+            "oldPassengerStr": f"{self.user.NAME},1,{self.user.ID},{self.user.PASSENGER_CLASS}_",  # 需要与 passengerTicketStr 保持一致
             "tour_flag": "dc",  # 票类型dc为单程票
             "whatsSelect": "1",
             "sessionId": "",
@@ -560,29 +609,33 @@ class GetTicket:
         }
         uab_collina_value = self.generate_uab_collina()
         self.session.cookies.update({'_uab_collina': uab_collina_value})
+
+        self.noticket = False#重置车票状态
         times = 0
-        while times < 10:
-            times = times + 1  # 最多重复10次
+        while times < self.user.grabfunction_max_try_times:
+            times += 1
             response = self.session.post(url, data=data)
+            self.ischoose_seat=self._ischoose_seat(response.json(),self.user.TICKET_CLASS) #根据回复报文判断是否可以选座位
+            self.ischoose_beds=self._ischoose_beds(response.json(),self.user.TICKET_CLASS) #根据回复报文判断是否可以选床位
             self._logrecord("check_order_info_url", url)
             self._logrecord("check_order_info_request_data", data)
             self._logrecord("check_order_info_response_text", response.text)
-            if response.status_code == 200:
-                if self.sysbusy in response.text:
-                    print("服务器繁忙！正在重试！")
-                    continue
-                if "仅剩0" in response.text:
-                    print("已没有车票！")
-                    break
-                else:
-                    if response.json().get("status"):
-                        print("检查订单信息成功！")
-                        break
-                    else:
-                        print("检查订单信息失败！正在重试！")
-                        continue
+            if response.status_code != 200:
+                print(f"请求失败！状态码：{response.status_code}  正在重试！")
+                continue
+            elif self.sysbusy in response.text:
+                print("服务器繁忙！正在重试！")
+                continue
+
+            if "仅剩0" in response.text:
+                print("已没有车票！")
+                self.noticket=True#没有车票
+                break
+            elif response.json().get("status"):
+                print("检查订单信息成功！")
+                break
             else:
-                print(f"请求失败，状态码：{response.status_code}   正在重试！")
+                print("检查订单信息失败！正在重试！")
                 continue
 
     '''
@@ -609,7 +662,7 @@ class GetTicket:
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
         })
         data = {
-            "train_date": f"{datetime.strptime(user.train_date, "%Y-%m-%d").strftime("%a")} {self.user.month_dict[int(self.user.train_date[5:7])]} {self.user.train_date[-2:]} {self.user.train_date[:4]} 00:00:00 GMT+0800 (中国标准时间)",
+            "train_date": f"{datetime.strptime(self.user.train_date, "%Y-%m-%d").strftime("%a")} {self.user.month_dict[int(self.user.train_date[5:7])]} {self.user.train_date[-2:]} {self.user.train_date[:4]} 00:00:00 GMT+0800 (中国标准时间)",
             "train_no": self.tickets[train]["all_trainname"],
             "stationTrainCode": train,
             "seatType": self.user.TICKET_CLASS,
@@ -624,22 +677,21 @@ class GetTicket:
         uab_collina_value = self.generate_uab_collina()
         self.session.cookies.update({'_uab_collina': uab_collina_value})
         times = 0
-        while times < 10:
-            times = times + 1  # 最多重复10次
+        while times < self.user.grabfunction_max_try_times:
+            times += 1
             response = self.session.post(url, data=data)
             self._logrecord("submit_order_url", url)
             self._logrecord("submit_order_request_data", data)
             self._logrecord("submit_order_response_text", response.text)
-            if self.sysbusy in response.text:
+            if response.status_code != 200:
+                print(f"请求失败！状态码：{response.status_code}  正在重试！")
+                continue
+            elif self.sysbusy in response.text:
                 print("服务器繁忙！正在重试！")
                 continue
             else:
-                if response.status_code == 200:
-                    print("提交订单成功！")
-                    break
-                else:
-                    print(f"请求失败，状态码：{response.status_code}  正在重试！")
-                    continue
+                print("提交订单成功！")
+                break
 
     '''
     确认订单
@@ -665,17 +717,16 @@ class GetTicket:
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
         })
         data = {
-            'passengerTicketStr': f"{self.user.TICKET_CLASS},0,1,{self.user.NAME},1,{self.user.ID},{self.user.PHONE_NUMBER},N,{self._allEncStr}",
-            'oldPassengerStr': f"{self.user.NAME},1,{self.user.ID},1_",
-            # 'randCode': '',
+            'passengerTicketStr': f"{self.user.TICKET_CLASS},{self.user.GENDER},{self.user.PASSENGER_CLASS},{self.user.NAME},1,{self.user.ID},{self.user.PHONE_NUMBER},N,{self._allEncStr}",
+            'oldPassengerStr': f"{self.user.NAME},1,{self.user.ID},{self.user.PASSENGER_CLASS}_",
             'purpose_codes': '00',
             'key_check_isChange': self._key_check_isChange,
             'leftTicketStr': self.tickets[train]["left_ticket"],
-            'train_location': self.tickets[train]['train_location'],  # one_train[15]
-            'choose_seats': ''+self.user.choose_seats,  # # 选择坐席 ABCDEF 上中下铺 默认为空不选
-            'seatDetailType': '000',  #
-            'is_jy': 'N',  # 是否为境内预订 默认N
-            'is_cj': 'N',  # 是否为成人票 默认N
+            'train_location': self.tickets[train]['train_location'],
+            'choose_seats': self.user.choose_seats if self.ischoose_seat else '',  #  选择坐席
+            'seatDetailType': '000',  #这里应该为上下铺请求？
+            'is_jy': 'N',  # 是否为境外预订，境内为N
+            'is_cj': 'N' if self.user.PASSENGER_CLASS == "1" else 'Y',  # 是否为成人票，成人为N
             'encryptedData': '',
             'whatsSelect': '1',
             'roomType': '00',
@@ -686,8 +737,8 @@ class GetTicket:
         uab_collina_value = self.generate_uab_collina()
         self.session.cookies.update({'_uab_collina': uab_collina_value})
         times = 0
-        while times < 10:
-            times = times + 1  # 最多重复10次
+        while times < self.user.grabfunction_max_try_times:
+            times += 1
             response = self.session.post(url, data=data)
             self._logrecord("confirm_order_url", url)
             self._logrecord("confirm_order_request_data", data)
@@ -699,8 +750,7 @@ class GetTicket:
                 print("服务器繁忙！正在重试！")
                 continue
 
-            response_j=response.json()#转化为json格式
-            if response_j['data']['submitStatus']:
+            if response.json()['data']['submitStatus']:
                 print("确认订单成功！")
                 break
             else:
@@ -708,8 +758,7 @@ class GetTicket:
                 uab_collina_value = self.generate_uab_collina()
                 self.session.cookies.update({'_uab_collina': uab_collina_value})
                 response = self.session.post(url, data=data)
-                response_j = response.json()#转化为json格式
-                if response_j['data']["submitStatus"]:
+                if response.json()['data']["submitStatus"]:
                     print("确认订单成功！")
                     break
                 print("确认订单失败！正在重试！")
@@ -726,17 +775,23 @@ class GetTicket:
                 'REPEAT_SUBMIT_TOKEN': self._REPEAT_SUBMIT_TOKEN
                 }
         del self.session.cookies['_uab_collina']
-        while True:
+
+        times=0
+        while times < self.user.grabfunction_max_try_times:
+            times += 1
             response = self.session.post(url, data=data)
             self._logrecord("base_log_url", url)
             self._logrecord("base_log_request_data", data)
             self._logrecord("base_log_response_text", response.text)
-            if response.status_code == 200:
-                print("记录日志成功！")
-                break
-            else:
+            if response.status_code != 200:
                 print(f"请求失败，状态码：{response.status_code}  正在重试！")
                 continue
+            elif self.sysbusy in response.text:
+                print("服务器繁忙！正在重试！")
+                continue
+            else:
+                print("记录日志成功！")
+                break
 
     '''
     排队出票
@@ -766,36 +821,35 @@ class GetTicket:
             })
 
         times=0
-        while times<10:
-            times=times+1 #最多重复10次
+        while times < self.user.grabfunction_max_try_times:
+            times += 1
             response = self.session.get(url)
             self._logrecord("queue_order_url", url)
             self._logrecord("queue_order_response_text", response.text)
-            if response.status_code == 200:
-                data = response.json()
-                # 获取排队等待时间
-                wait_time = data['data'].get('waitTime')
-                # 获取订单ID
-                order_id = data['data'].get('orderId')
-                # 如果订单ID已生成，退出循环
-                if order_id:
-                    print("出票成功！请在10分钟内去12306客户端支付！")
-                    return response.cookies, order_id
-                # 如果订单ID为null，继续发送请求并等待相应的时间
-                print("当前没有订单ID，继续排队...")
-                if wait_time == 4:
-                    time.sleep(3)  # 等待3秒后再次请求
-                elif wait_time == -100:
-                    time.sleep(1)  #等待1秒后再次请求
-                elif wait_time == -2:
-                    print("出票失败！")
-                    return 0
-                order_id = self.queue_order()
-                return order_id
-
-            else:
-                print(f"请求失败，状态码: {response.status_code}  正在重试！")
+            if response.status_code != 200:
+                print(f"请求失败！状态码：{response.status_code}  正在重试！")
                 continue
+            elif self.sysbusy in response.text:
+                print("服务器繁忙！正在重试！")
+                continue
+
+            # 获取排队等待时间
+            wait_time = response.json()['data'].get('waitTime')
+            # 获取订单ID
+            order_id = response.json()['data'].get('orderId')
+            # 如果订单ID已生成，退出循环
+            if order_id:
+                print("出票成功！请在10分钟内去12306客户端支付！")
+                return True
+            # 如果订单ID为null，继续发送请求并等待相应的时间
+            print("当前没有订单ID，继续排队...")
+            if wait_time == 4:
+                time.sleep(3)  # 等待3秒后再次请求
+            elif wait_time == -100:
+                time.sleep(1)  #等待1秒后再次请求
+            elif wait_time == -2:
+                print("出票失败！")
+                return False
 
     '''
     订票完整流程
@@ -803,32 +857,39 @@ class GetTicket:
     def run(self):
         # 获取车票信息
         while True:
-            time.sleep(0.1) #等待0.1秒
             result = self.get_ticket_info()
             if  result:
                 break
         try_time = 0
-        while try_time < user.max_try_time:
+        while try_time < self.user.max_try_times:
+            try_time += 1
             # 遍历车次
             for train in self.user.TRAIN_ID_LIST:
-                # 创建订单
-                self.create_order(train)
-                # 订单初始化
-                self.init_order()
-                # 获取乘车人信息
-                self.check_passengers()
-                # 检查订单信息
-                self.check_order_info()
-                # 提交订单
-                self.submit_order(train)
-                # 确认订单
-                self.confirm_order(train)
-                # 记录日志
-                self.base_log()
-                # 排队出票
-                order_id = self.queue_order()
-                if order_id:
-                    return 1
-                else:
-                    try_time += 1
+                try:
+                    # 创建订单
+                    self.create_order(train)
+                    # 订单初始化
+                    self.init_order()
+                    # 获取乘车人信息
+                    self.check_passengers()
+                    # 检查订单信息
+                    self.check_order_info()
+                    # 提交订单
+                    self.submit_order(train)
+                    # 确认订单
+                    #self.confirm_order(train)
+                    # 记录日志
+                    self.base_log()
+                    # 排队出票
+                    order_id = self.queue_order()
+                    if order_id:
+                        return 1
+                except Exception as e:
+                    print(f"抢票失败: {str(e)}")
+                    if not self.noticket:
+                        print("正在重试！")
+                        continue
+                    else:
+                        print("车票已被抢完！程序退出！")
+                        return 2
         return 0
