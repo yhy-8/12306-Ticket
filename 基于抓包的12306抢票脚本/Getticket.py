@@ -24,8 +24,8 @@ class GetTicket:
         self.session = requests.Session()
         self.sysbusy = "系统繁忙，请稍后重试！"  # response的繁忙提示语句
         self.logswitch=self.user.logswitch
-        self.ischoose_seat_control=self.user.ischoose_seat   #可以调参数控制是否启用选座位
-        self.ischoose_beds_control = self.user.ischoose_beds  #可以调参数控制是否启用选床位
+        self.ischoose_position_control=self.user.ischoose_position  #外部参数参数控制是否启用选位
+
 
 
     '''
@@ -42,7 +42,7 @@ class GetTicket:
     判断是否能选座位
     '''
     def _ischoose_seat(self,response,choose_type):
-        if self.ischoose_seat_control:
+        if self.ischoose_position_control:
             data = response.get('data', {})
             can_seats = data.get('canChooseSeats', 'N')
             seats_choose=["P","9","M","O"]#特等座 P,商务座 9,一等座 M,二等座 O
@@ -57,7 +57,7 @@ class GetTicket:
     判断是否能选床铺
     '''
     def _ischoose_beds(self,response,choose_type):
-        if self.ischoose_beds_control:
+        if self.ischoose_position_control:
             data = response.get('data', {})
             can_beds = data.get('canChooseBeds', 'N')
             beds_choose = ["3", "4", "F"]  # 硬卧 3,软卧 4,动卧 F
@@ -67,6 +67,14 @@ class GetTicket:
                 return False
         else:
             return False
+
+    '''
+    解析床铺代码
+    100为下铺，010为中铺，001为上铺
+    '''
+    @staticmethod
+    def _choose_position_bed(choose_position):
+        return {'上铺': '001', '中铺': '010', '下铺': '100'}[choose_position]
 
     '''
     获取cookie
@@ -723,8 +731,8 @@ class GetTicket:
             'key_check_isChange': self._key_check_isChange,
             'leftTicketStr': self.tickets[train]["left_ticket"],
             'train_location': self.tickets[train]['train_location'],
-            'choose_seats': self.user.choose_seats if self.ischoose_seat else '',  #  选择坐席
-            'seatDetailType': '000',  #这里应该为上下铺请求？
+            'choose_seats': self.user.choose_position if self.ischoose_seat else '',  #  选择座位
+            'seatDetailType': self._choose_position_bed(self.user.choose_position) if self.ischoose_beds else '000',  #选择铺位，这里用函数进一步解析
             'is_jy': 'N',  # 是否为境外预订，境内为N
             'is_cj': 'N' if self.user.PASSENGER_CLASS == "1" else 'Y',  # 是否为成人票，成人为N
             'encryptedData': '',

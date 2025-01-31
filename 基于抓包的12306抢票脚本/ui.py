@@ -3,7 +3,6 @@ from tkinter import ttk
 from datetime import datetime
 from tkcalendar import DateEntry  # 导入tkcalendar中的DateEntry
 import Getticket
-import user
 import time
 import ntplib
 import json
@@ -21,7 +20,7 @@ class TicketUI:
         self.root = root
         self.root.title("12306 抢票助手")
         self.root.geometry("800x700")
-        self.ntpserver = user.ntpserver
+        self.ntpserver = web.user.ntpserver
 
         #数据初始化
         self.user_frame = None
@@ -39,8 +38,8 @@ class TicketUI:
         self.start_station_entry = None
         self.start_city_entry = None
         self.trip_frame = None
-        self.seat_position = None
-        self.seat_class = None
+        self.choose_position = None
+        self.ticket_class = None
         self.passenger_class = None
         self.phone_entry = None
         self.id_entry = None
@@ -70,7 +69,7 @@ class TicketUI:
             "学生":"3",
             "残军":"4"
         }
-        self.seat_position_codes ={
+        self.ticket_class_codes ={
             "特等座": "P",
             "商务座": "9",
             "一等座": "M",
@@ -124,14 +123,14 @@ class TicketUI:
 
         # 座位等级和位置选择
         tk.Label(self.user_frame, text="座位等级:", font=("楷体", 12)).grid(row=2, column=0, padx=5)
-        self.seat_class = ttk.Combobox(self.user_frame, font=("楷体", 12), state="readonly")
-        self.seat_class['values'] = list(self.seat_options.keys())
-        self.seat_class.grid(row=2, column=1, padx=5)
-        self.seat_class.bind("<<ComboboxSelected>>", self._update_seat_positions)
+        self.ticket_class = ttk.Combobox(self.user_frame, font=("楷体", 12), state="readonly")
+        self.ticket_class['values'] = list(self.seat_options.keys())
+        self.ticket_class.grid(row=2, column=1, padx=5)
+        self.ticket_class.bind("<<ComboboxSelected>>", self._update_seat_positions)
 
         tk.Label(self.user_frame, text="座位位置:", font=("楷体", 12)).grid(row=2, column=2, padx=5)
-        self.seat_position = ttk.Combobox(self.user_frame, font=("楷体", 12), state="readonly")
-        self.seat_position.grid(row=2, column=3, padx=5)
+        self.choose_position = ttk.Combobox(self.user_frame, font=("楷体", 12), state="readonly")
+        self.choose_position.grid(row=2, column=3, padx=5)
 
         #优惠类型选择
         tk.Label(self.user_frame, text="类型:", font=("楷体", 12)).grid(row=0, column=4, padx=5)
@@ -221,10 +220,10 @@ class TicketUI:
 
     def _update_seat_positions(self, event):
         """根据座位等级更新可选位置"""
-        selected_class = self.seat_class.get()
+        selected_class = self.ticket_class.get()
         positions = self.seat_options.get(selected_class, ["不可选"])
-        self.seat_position['values'] = positions
-        self.seat_position.current(0)
+        self.choose_position['values'] = positions
+        self.choose_position.current(0)
 
     def _start_login_thread(self):
         """启动登录线程"""
@@ -262,8 +261,8 @@ class TicketUI:
             web.user.GENDER = self.gender_entry.get().strip()
             web.user.ID = self.id_entry.get().strip()
             web.user.PHONE_NUMBER = self.phone_entry.get().strip()
-            web.user.TICKET_CLASS = self.seat_position_codes[self.seat_class.get()]
-            web.user.choose_seats = self.seat_position.get()
+            web.user.TICKET_CLASS = self.ticket_class_codes[self.ticket_class.get()]
+            web.user.choose_position = self.choose_position.get()
             web.user.PASSENGER_CLASS=self.passenger_options[self.passenger_class.get()]
             web.user.start_city = self.start_city_entry.get().strip()
             web.user.start_station = self.start_station_entry.get().strip()
@@ -274,24 +273,28 @@ class TicketUI:
             self._save_user_data()#保存用户信息
 
             #输出用户信息
-            self._log(f"用户: {web.user.NAME}, "
-                      f"车次: {web.user.TRAIN_ID_LIST},"
-                      f" 座位等级: {web.user.TICKET_CLASS},"
-                      f"上车站:{web.user.start_station},"
-                      f"下车站:{web.user.end_station},"
+            self._log(f"用户: {web.user.NAME},\n "
+                      f"车次: {web.user.TRAIN_ID_LIST},\n"
+                      f" 选票类型: {web.user.TICKET_CLASS},\n"
+                      f"位置选择:{web.user.choose_position},\n"
+                      f"上车站:{web.user.start_station},\n"
+                      f"下车站:{web.user.end_station},\n"
                       f"出发时间:{web.user.train_date}")
 
             # 初始化创建 ntplib 客户端对象,并对比本地时间
             client = ntplib.NTPClient()
-            self._log(f"当前使用ntp服务器为：{self.ntpserver}")
-            try:
-                dt = datetime.fromtimestamp(int(client.request(self.ntpserver).tx_time))
-                self._log(f"当前NTP时间: {dt}")
-                self._log(f"当前本地时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            except Exception as e:
-                self._log(f"获取NTP时间失败: {e}")
-                self._log("建议检查NTP服务器地址！")
-                self._log(f"当前本地时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            if web.user.isntp:
+                self._log(f"当前使用ntp服务器为：{self.ntpserver}")
+                try:
+                    dt = datetime.fromtimestamp(int(client.request(self.ntpserver).tx_time))
+                    self._log(f"当前NTP时间: {dt}")
+                    self._log(f"当前本地时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                except Exception as e:
+                    self._log(f"获取NTP时间失败: {e}")
+                    self._log("建议检查NTP服务器地址！")
+                    self._log(f"当前本地时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            else:
+                self._log("用户未启用NTP授时！")
 
             # 首次检查登录状态
             self._log(f"正在检查登录状态...")
@@ -309,6 +312,7 @@ class TicketUI:
             pattern =""#初始化抢票时间模式
             self._log(f"抢票设置时间为: {target_time_str}")
             self._log("等待抢票时间到达...")
+
             # 首先使用本地时间，直到开票前一分钟
             before_now_local=datetime.now()
             while True:
@@ -325,13 +329,18 @@ class TicketUI:
                         self._log(f"登录状态异常，请重新登录！")
                         break  # 登录失败退出循环
                 if (target_time-now_local).total_seconds() <= 60 :
-                    self._log("距离开票不足一分钟！尝试切换为NTP授时模式！")
-                    try:
-                        ntp = client.request(self.ntpserver).tx_time  # 测试ntp服务器响应，返回值精度可达小数后七位
-                        pattern = "ntp"
-                        break
-                    except Exception as e:
-                        self._log(f"获取NTP时间失败: {e}")
+                    if web.user.isntp:
+                        self._log("距离开票不足一分钟！尝试切换为NTP授时模式！")
+                        try:
+                            ntp = client.request(self.ntpserver).tx_time  # 测试ntp服务器响应，返回值精度可达小数后七位
+                            pattern = "ntp"
+                            break
+                        except Exception as e:
+                            self._log(f"获取NTP时间失败: {e}")
+                            pattern = "local"
+                            break
+                    else:
+                        self._log("距离开票不足一分钟！由于未开启NTP授时，尝试切换为本地授时模式！")
                         pattern = "local"
                         break
 
@@ -356,7 +365,7 @@ class TicketUI:
                 #与NTP授时校准
                 adjust_times = 0
                 all_star_time = []
-                while adjust_times<user.adjust_times_max:
+                while adjust_times < web.user.adjust_times_max:
                     try:
                         #获取ntp时间戳，与目标时间戳作差，最后加上time.perf_counter的当前数值，得到启动抢票时的time.perf_counter数值
                         npt_time = client.request(self.ntpserver).tx_time
@@ -383,7 +392,7 @@ class TicketUI:
 
                 while True:
                     # 判断当前时间是否到达目标时间,并不再进行登录检查
-                    if time.perf_counter() >= (float(filtered_star_time)-user.advanced):
+                    if time.perf_counter() >= (float(filtered_star_time)-web.user.advanced):
                         # 执行抢票程序
                         self._log("抢票时间到达，开始抢票...")
                         result = web.run()
@@ -411,8 +420,8 @@ class TicketUI:
             "gender": self.gender_entry.get().strip(),
             "id": self.id_entry.get().strip(),
             "phone": self.phone_entry.get().strip(),
-            "seat_class": self.seat_class.get(),
-            "seat_position": self.seat_position.get(),
+            "ticket_class": self.ticket_class.get(),
+            "choose_position": self.choose_position.get(),
             "passenger_position":self.passenger_class.get(),
             "start_city": self.start_city_entry.get().strip(),
             "start_station": self.start_station_entry.get().strip(),
@@ -435,8 +444,8 @@ class TicketUI:
                 self.gender_entry.insert(0, data.get("gender", ""))
                 self.id_entry.insert(0, data.get("id", ""))
                 self.phone_entry.insert(0, data.get("phone", ""))
-                self.seat_class.set(data.get("seat_class", ""))
-                self.seat_position.set(data.get("seat_position", ""))
+                self.ticket_class.set(data.get("ticket_class", ""))
+                self.choose_position.set(data.get("choose_position", ""))
                 self.passenger_class.set(data.get("passenger_position", ""))
                 self.start_city_entry.insert(0, data.get("start_city", ""))
                 self.start_station_entry.insert(0, data.get("start_station", ""))
