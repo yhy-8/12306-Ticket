@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
-from datetime import datetime
+from datetime import datetime,timedelta
 from tkcalendar import DateEntry  # 导入tkcalendar中的DateEntry
 import Getticket
 import time
@@ -348,7 +348,7 @@ class TicketUI:
             if pattern == "local":
                 self._log("切换为本地时间模式！")
                 while True:
-                    if datetime.now()>= target_time:
+                    if datetime.now()>= target_time-timedelta(seconds=web.user.advanced):
                         # 执行抢票程序
                         self._log("抢票时间到达，开始抢票...")
                         result = web.run()

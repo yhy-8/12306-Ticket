@@ -885,7 +885,7 @@ class GetTicket:
                     # 提交订单
                     self.submit_order(train)
                     # 确认订单
-                    #self.confirm_order(train)
+                    self.confirm_order(train)
                     # 记录日志
                     self.base_log()
                     # 排队出票

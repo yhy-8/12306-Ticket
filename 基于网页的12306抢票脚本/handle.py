@@ -31,7 +31,6 @@ class Qiangpiao():
         self.spinner=Spinner()#实例化等待动画类
 
 
-
     def _login(self):
         self.driver.get(self.login_url)
         # 窗口最大化
@@ -127,7 +126,7 @@ class Qiangpiao():
                 except TimeoutException:
                     print("加载超时！(60s)")
                 # 点击确认
-                #self.driver.find_element(By.ID,'qr_submit_id').click()
+                self.driver.find_element(By.ID,'qr_submit_id').click()
                 print("购票成功！")
             else:
                 # 提交订单
@@ -139,7 +138,7 @@ class Qiangpiao():
                 except TimeoutException:
                     print("加载超时！(60s)")
                 # 点击确认
-                #self.driver.find_element(By.ID,'qr_submit_id').click()
+                self.driver.find_element(By.ID,'qr_submit_id').click()
                 print("购票成功！")
         except TimeoutException:
             print("加载超时！(60s)")

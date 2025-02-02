@@ -1,0 +1,6 @@
+jupyter_core==5.7.2
+ntplib==0.4.0
+numpy==2.2.2
+Pillow==11.1.0
+Requests==2.32.3
+tkcalendar==1.6.1

@@ -5,12 +5,13 @@ max_try_times = 3   #整体流程抢票尝试次数
 logswitch = False   #是否开始日志记录，开启后会降低抢票速度，建议正常使用不开启
 isntp = True #是否启用NTP授时
 ntpserver = 'ntp.aliyun.com' #ntp服务器网址
-ischoose_position = False #是否启用座位/床位选择
-advanced = 0.0     #提前发送请求时间，单位(s)。适当地提前可以规避网络延迟，过于提前会导致重复请求失败，达到五次会断开连接！目前仅NTP模式可用
+ischoose_position = True #是否启用座位/床位选择
+advanced = 0.0     #提前发送请求时间，单位(s)。适当地提前可以规避网络延迟，过于提前会导致重复请求失败，达到五次会断开连接！
 adjust_times_max = 80  #ntp授时校准时的请求次数
 grabfunction_max_try_times = 6 #抢票各部分函数最多重复次数
 
 
+#以下为用户数据初始化，正常使用不用管
 # 由于火车站使用三字码，所以我们需要先获取站点对应的三字码
 code_url = r"https://kyfw.12306.cn/otn/resources/js/framework/station_name.js"
 Code_Data = r.urlopen(code_url).read().decode('utf-8')
