@@ -1,0 +1,7 @@
+{
+  "max_try_times": 3,
+  "logswitch": false,
+  "ischoose_position": true,
+  "advanced": 0.0,
+  "grabfunction_max_try_times": 6
+}
