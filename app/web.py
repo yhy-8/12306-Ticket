@@ -189,7 +189,7 @@ class WebApp:
         with ui.header().classes('bg-indigo-700 text-white p-3 shadow-lg flex justify-between items-center w-full'):
             with ui.row().classes('items-center gap-2'):
                 ui.icon('train', size='md')
-                ui.label('12306 极速抢票助手').classes('text-xl font-extrabold tracking-wide')
+                ui.label('12306 抢票助手').classes('text-xl font-extrabold tracking-wide')
 
             with ui.row().classes('items-center gap-4'):
                 self.login_status_badge = ui.badge('○ 未登录', color='red-5').classes('text-sm px-2 py-1')
