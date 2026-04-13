@@ -1,9 +1,9 @@
 """
 12306 抢票助手 - NiceGUI 界面逻辑
 优化说明：
-1. 单人模式：保留原有逻辑
-2. 多人模式：改为“乘车人批量抢票”模式，一个账号扫码即可
-3. 多人模式下不再强调多人扫码，而是多个乘车人档案异步并行抢票
+1. 统一采用“乘车人批量抢票”模式，兼容单人和多人场景，精简UI和内部逻辑。
+2. 一个账号扫码即可授权多个乘车人档案异步并行抢票。
+3. 增加并发任务监控窗口的独立关闭功能，避免界面拥挤。
 """
 import os
 import json
@@ -121,7 +121,6 @@ class WebApp:
         self.get_ticket = GetTicket(self.config)
 
         self.logged_in = False
-        self.task_running = False
         self.users_data = {}
         self.current_qr_uuid = None
 
@@ -133,8 +132,7 @@ class WebApp:
         self.updating_stations = False
         self.updating_city = False
 
-        # 批量任务相关
-        self.multi_user_mode = False
+        # 并发任务相关
         self.active_tasks = {}
         self.task_ui_elements = {}
 
@@ -269,22 +267,9 @@ class WebApp:
             with ui.column().classes('w-full lg:w-1/3 flex flex-col gap-6'):
                 # --- 卡片 1：核心控制台 ---
                 with ui.card().classes('w-full shadow-md rounded-xl p-5 bg-white'):
-                    with ui.row().classes('items-center mb-4 text-indigo-700 justify-between w-full'):
-                        with ui.row().classes('items-center'):
-                            ui.icon('rocket_launch', size='sm')
-                            ui.label('任务控制台').classes('text-lg font-bold ml-2')
-                        self.task_status_label = ui.label('待命').classes(
-                            'text-gray-500 font-bold text-sm bg-gray-100 px-2 py-1 rounded')
-
-                    # 运行模式切换 (独立卡片条UI)
-                    with ui.row().classes(
-                            'w-full items-center justify-between bg-blue-50/50 p-2 rounded-lg border border-blue-100 mb-4'):
-                        with ui.row().classes('items-center gap-2'):
-                            ui.icon('tune', size='sm', color='primary')
-                            ui.label('运行模式').classes('font-bold text-sm text-gray-700')
-                        self.mode_toggle = ui.toggle(
-                            ['单人', '多人'], value='单人', on_change=self.toggle_mode
-                        ).props('rounded unelevated spread no-caps').classes('shadow-sm bg-white')
+                    with ui.row().classes('items-center mb-4 text-indigo-700 w-full'):
+                        ui.icon('rocket_launch', size='sm')
+                        ui.label('任务控制台').classes('text-lg font-bold ml-2')
 
                     # 全局公用的定时开抢
                     with ui.row().classes('w-full items-center gap-2 mb-4'):
@@ -294,37 +279,28 @@ class WebApp:
                         ui.button(icon='my_location', on_click=self.set_current_time).props(
                             'flat round color=primary').tooltip('同步当前系统时间')
 
-                    # 单人模式操作区
-                    self.single_mode_container = ui.column().classes('w-full gap-2')
-                    with self.single_mode_container:
-                        self.start_btn = ui.button('立即启动抢票', on_click=self.start_grab_task).classes(
-                            'w-full py-3 text-lg font-bold rounded-lg shadow-md').props('color=red-6 push icon=bolt')
-
-                    # 多人模式操作区
-                    self.multi_mode_container = ui.column().classes('w-full gap-3')
-                    self.multi_mode_container.set_visibility(False)
-                    with self.multi_mode_container:
+                    # 并发操作区
+                    with ui.column().classes('w-full gap-3'):
                         with ui.row().classes('w-full gap-2'):
                             self.multi_user_select = ui.select(
                                 options=list(self.users_data.keys()) if self.users_data else ['暂无配置'],
-                                label='选择乘车人档案', multiple=True
+                                label='选择需抢票的乘车人 (可多选)', multiple=True
                             ).classes('flex-grow').props('outlined dense')
                             ui.button('刷新', icon='refresh', on_click=self.refresh_multi_user_list).props(
                                 'flat round color=primary')
 
                         with ui.row().classes('w-full gap-2'):
-                            ui.button('全部启动', on_click=self.start_multi_grab_task).classes(
+                            ui.button('启动所选任务', on_click=self.start_multi_grab_task).classes(
                                 'flex-grow py-2 font-bold').props('color=green-6 push icon=play_arrow')
                             ui.button('全部停止', on_click=self.stop_all_tasks).classes(
                                 'flex-grow py-2 font-bold').props('color=red-6 outline icon=stop')
 
-                # --- 卡片 2：多人任务监控 (仅多人模式显示) ---
+                # --- 卡片 2：并发监控窗口 ---
                 self.multi_task_panel = ui.card().classes('w-full shadow-md rounded-xl p-5 bg-white')
-                self.multi_task_panel.set_visibility(False)
                 with self.multi_task_panel:
                     with ui.row().classes('items-center mb-4 text-indigo-700'):
-                        ui.icon('groups', size='sm')
-                        ui.label('多人任务并发监控').classes('text-lg font-bold ml-2')
+                        ui.icon('monitor_heart', size='sm')
+                        ui.label('并发任务监控').classes('text-lg font-bold ml-2')
                     self.multi_task_container = ui.column().classes('w-full gap-3')
 
                 # --- 卡片 3：全局终端日志 (固定在底部) ---
@@ -452,9 +428,6 @@ class WebApp:
             'start_time': self.start_time_input.value or ''
         }
 
-    def apply_config(self):
-        self.config.load_from_dict(self.get_config_from_ui())
-
     def update_stations(self, station_type):
         if self.updating_stations:
             return
@@ -544,31 +517,15 @@ class WebApp:
         self.update_login_status_display()
         self._show_notification("检查完毕: 账号有效" if self.logged_in else "检查完毕: 会话已过期", "positive" if self.logged_in else "warning")
 
-    def toggle_mode(self, e):
-        """切换单人/多人模式"""
-        mode_value = e.value if hasattr(e, 'value') else e
-        self.multi_user_mode = (mode_value == '多人')
-
-        if self.multi_user_mode:
-            self.single_mode_container.set_visibility(False)
-            self.multi_mode_container.set_visibility(True)
-            self.multi_task_panel.set_visibility(True)
-            self.refresh_multi_user_list()
-        else:
-            self.single_mode_container.set_visibility(True)
-            self.multi_mode_container.set_visibility(False)
-            self.multi_task_panel.set_visibility(False)
-            self.stop_all_tasks()
-
     def refresh_multi_user_list(self):
-        """刷新多人模式的用户列表"""
+        """刷新乘车人列表"""
         options = list(self.users_data.keys()) if self.users_data else ['暂无配置']
         self.multi_user_select.options = options
         self.multi_user_select.update()
         self._show_notification("用户列表已刷新", "info")
 
     def start_multi_grab_task(self):
-        """启动多人抢票任务"""
+        """启动抢票任务"""
         selected_users = self.multi_user_select.value
         if not selected_users:
             self._show_notification("请先选择至少一个用户", 'warning')
@@ -592,21 +549,18 @@ class WebApp:
             self._start_single_user_task(user_name, user_config)
 
     def _start_single_user_task(self, user_name, user_config):
-        """为单个乘车人启动抢票任务"""
-        # [修复1]：创建完全独立的 ConfigManager 防止配置全局污染
+        """为单个乘车人启动并展示抢票任务窗口"""
         independent_config = ConfigManager()
         independent_config.load_from_dict(user_config)
         user_get_ticket = GetTicket(independent_config)
 
-        # [修复2]：继承全局主账号的登录态 (Cookies)
+        # 继承全局主账号的登录态 (Cookies)
         if hasattr(self.get_ticket, 'session'):
             user_get_ticket.session.cookies.update(self.get_ticket.session.cookies)
 
-        # [修复3]：防止 UI 重复堆叠，启动前先移除该用户旧的 UI 卡片
+        # 防止 UI 重复堆叠，启动前先移除该用户旧的 UI 卡片
         if user_name in self.task_ui_elements:
-            old_card = self.task_ui_elements[user_name].get('card')
-            if old_card:
-                old_card.delete()
+            self._close_user_task_ui(user_name)
 
         with self.multi_task_container:
             with ui.card().classes('w-full p-3 bg-gray-50 border-l-4 border-indigo-500') as card:
@@ -620,8 +574,9 @@ class WebApp:
                         'whitespace-pre-wrap break-words p-2 rounded border border-gray-300'
                     )
 
-                with ui.row().classes('gap-2'):
+                with ui.row().classes('gap-2 w-full'):
                     stop_btn = ui.button('停止', icon='stop').classes('flex-grow').props('color=red-6 outline size=sm')
+                    close_btn = ui.button('关闭窗口', icon='close').classes('flex-grow').props('color=grey outline size=sm')
 
         self.task_ui_elements[user_name] = {
             'card': card,
@@ -644,11 +599,13 @@ class WebApp:
         }
 
         stop_btn.on_click(lambda: self._stop_user_task(user_name))
+        close_btn.on_click(lambda: self._close_user_task_ui(user_name))
+
         task_thread.start()
         self._show_notification(f"已启动用户 {user_name} 的抢票任务", "positive")
 
     def _run_multi_user_grab(self, user_name, user_get_ticket, status_label):
-        """多人模式下单个用户的抢票执行逻辑"""
+        """单个用户的抢票执行逻辑"""
         try:
             start_time_str = self.start_time_input.value
             if start_time_str:
@@ -657,7 +614,7 @@ class WebApp:
                     user_get_ticket._log(f"[{user_name}] 已设定目标开抢时间: {start_time_str}")
                     target_dt_advanced = target_dt - timedelta(seconds=self.config.advanced)
 
-                    while self.active_tasks[user_name]['running']:
+                    while self.active_tasks.get(user_name, {}).get('running', False):
                         now = datetime.now()
                         diff_advanced = (target_dt_advanced - now).total_seconds()
 
@@ -673,6 +630,9 @@ class WebApp:
                             time.sleep(0.1)
                 except Exception as e:
                     user_get_ticket._log(f"[{user_name}] 定时器解析失败，将立即执行: {e}")
+
+            if not self.active_tasks.get(user_name, {}).get('running', False):
+                return
 
             user_get_ticket._log(f"[{user_name}] 开始检索车次信息...")
             result = user_get_ticket.run()
@@ -698,10 +658,25 @@ class WebApp:
                 self.active_tasks[user_name]['running'] = False
 
     def _stop_user_task(self, user_name):
-        """停止单个用户的抢票任务"""
+        """仅停止单个用户的抢票任务(保留UI窗口)"""
         if user_name in self.active_tasks:
             self.active_tasks[user_name]['running'] = False
             self._show_notification(f"已停止用户 {user_name} 的任务", "info")
+
+    def _close_user_task_ui(self, user_name):
+        """停止任务并移除监控窗口"""
+        self._stop_user_task(user_name)
+
+        # 移除UI卡片
+        if user_name in self.task_ui_elements:
+            card = self.task_ui_elements[user_name].get('card')
+            if card:
+                card.delete()
+            del self.task_ui_elements[user_name]
+
+        # 从活跃任务池中移除
+        if user_name in self.active_tasks:
+            del self.active_tasks[user_name]
 
     def stop_all_tasks(self):
         """停止所有用户的抢票任务"""
@@ -709,103 +684,33 @@ class WebApp:
             self.active_tasks[user_name]['running'] = False
         self._show_notification("已停止所有任务", "info")
 
-    def start_grab_task(self):
-        if self.task_running:
-            self._show_notification("已有任务在运行中，请勿重复点击", 'warning')
-            return
-        if not self.logged_in:
-            self._show_notification("尚未登录 12306 账号，请先扫码", 'negative')
-            self.get_qr_code()
-            return
-
-        self.apply_config()
-        self.task_running = True
-        self.task_status_label.text = "运行中"
-        self.task_status_label.classes(replace='text-white bg-green-500')
-        self.start_btn.props('loading')
-        self._show_notification("引擎启动，开始执行策略", "positive")
-
-        threading.Thread(target=self._run_grab, daemon=True).start()
-
     def _show_notification(self, message, notification_type='info'):
         self.pending_notifs.append((message, notification_type))
-
-    def _run_grab(self):
-        try:
-            start_time_str = self.start_time_input.value
-            if start_time_str:
-                try:
-                    target_dt = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
-                    self.get_ticket._log(f"[SYS] 已设定目标开抢时间: {start_time_str}")
-                    target_dt_advanced = target_dt - timedelta(seconds=self.config.advanced)
-
-                    while self.task_running:
-                        now = datetime.now()
-                        diff = (target_dt - now).total_seconds()
-                        diff_advanced = (target_dt_advanced - now).total_seconds()
-
-                        if now >= target_dt_advanced:
-                            self.get_ticket._log("[SYS] 倒计时结束，触发抢票逻辑！")
-                            break
-
-                        if diff > 0 and int(now.second) % 30 == 0:
-                            self.logged_in = bool(self.get_ticket.check_login_status())
-                            self.update_login_status_display()
-
-                        if diff_advanced > 300:
-                            time.sleep(10)
-                        elif diff_advanced > 60:
-                            time.sleep(1)
-                        else:
-                            time.sleep(0.1)
-                except Exception as e:
-                    self.get_ticket._log(f"[ERR] 定时器解析失败，将立即执行: {e}")
-
-            self.get_ticket._log("[SYS] 开始检索车次信息...")
-            result = self.get_ticket.run()
-
-            if result == 1:
-                self.get_ticket._log("[SUCCESS] 恭喜！锁票成功！")
-                self._show_notification("成功锁定席位！请火速前往 APP 支付", "positive")
-            elif result == 2:
-                self.get_ticket._log("[FAIL] 很遗憾，目标车票已售罄。")
-                self._show_notification("车票已售罄，下次早点来哦", "warning")
-            else:
-                self.get_ticket._log("[END] 任务自动终止，未抢到票。")
-                self._show_notification("任务结束，无可用车票", "info")
-        except Exception as e:
-            self.get_ticket._log(f"[ERR] 核心进程异常中止: {e}")
-            self._show_notification(f"内部异常: {e}", "negative")
-        finally:
-            self.task_running = False
-            self.task_status_label.text = "待命"
-            self.task_status_label.classes(replace='text-gray-500 bg-gray-100')
-            self.start_btn.props(remove='loading')
 
     def poll_logs(self):
         if not self.log_timer_active:
             return
 
-        if not self.multi_user_mode and self.get_ticket.logs:
+        # 更新全局主账号日志（扫码、网络检测等）
+        if self.get_ticket.logs:
             current_logs = self.get_ticket.logs
             if len(current_logs) > self.last_log_index:
                 for entry in current_logs[self.last_log_index:]:
                     self.log_output.push(entry)
                 self.last_log_index = len(current_logs)
 
-        if self.multi_user_mode:
-            # [细节修复] list() 包装避免 Runtime Error (dictionary changed size during iteration)
-            for user_name, task_info in list(self.active_tasks.items()):
-                if user_name not in self.task_ui_elements:
-                    continue
-                get_ticket = task_info['get_ticket']
-                log_output = self.task_ui_elements[user_name]['log_output']
-                log_index = task_info['log_index']
+        # 更新各个乘车人的独立窗口日志
+        for user_name, task_info in list(self.active_tasks.items()):
+            if user_name not in self.task_ui_elements:
+                continue
+            get_ticket = task_info['get_ticket']
+            log_output = self.task_ui_elements[user_name]['log_output']
+            log_index = task_info['log_index']
 
-                if get_ticket.logs and len(get_ticket.logs) > log_index:
-                    for entry in get_ticket.logs[log_index:]:
-                        log_output.push(entry)
-                    self.active_tasks[user_name]['log_index'] = len(get_ticket.logs)
+            if get_ticket.logs and len(get_ticket.logs) > log_index:
+                for entry in get_ticket.logs[log_index:]:
+                    log_output.push(entry)
+                self.active_tasks[user_name]['log_index'] = len(get_ticket.logs)
 
         while getattr(self, 'pending_notifs', []):
             msg, n_type = self.pending_notifs.pop(0)
