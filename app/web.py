@@ -196,12 +196,16 @@ class WebApp:
             with ui.row().classes('items-center gap-4'):
                 self.login_status_badge = ui.badge('○ 未登录', color='red-5').classes('text-sm px-2 py-1')
                 ui.button('扫码登录', icon='qr_code_scanner', on_click=self.get_qr_code).props('flat text-color=white')
-                ui.button(icon='refresh', on_click=self.check_login_status).props('flat round text-color=white').tooltip('刷新登录状态')
-                ui.button(icon='manage_accounts', on_click=self.show_user_management).props('flat round text-color=white').tooltip('乘车人档案')
+                ui.button(icon='refresh', on_click=self.check_login_status).props(
+                    'flat round text-color=white').tooltip('刷新登录状态')
+                ui.button(icon='manage_accounts', on_click=self.show_user_management).props(
+                    'flat round text-color=white').tooltip('乘车人档案')
 
         with ui.row().classes('w-full max-w-[1400px] mx-auto gap-6 p-6 items-stretch flex-wrap lg:flex-nowrap'):
+            # ==========================================
+            # 左侧边栏：行程与乘客配置区 (宽屏占 2/3)
+            # ==========================================
             with ui.column().classes('w-full lg:w-2/3 flex flex-col gap-6'):
-
                 with ui.card().classes('w-full shadow-md rounded-xl p-5 bg-white'):
                     with ui.row().classes('items-center mb-4 text-indigo-700'):
                         ui.icon('map', size='sm')
@@ -210,21 +214,28 @@ class WebApp:
                     with ui.grid(columns=1).classes('w-full md:grid-cols-2 gap-4'):
                         with ui.column().classes('w-full gap-2'):
                             self.start_city_input = ui.input('出发城市', placeholder='如: 北京',
-                                                             on_change=lambda e: self.update_stations('start')).classes('w-full').props('outlined dense')
+                                                             on_change=lambda e: self.update_stations('start')).classes(
+                                'w-full').props('outlined dense')
                             self.start_station_select = ui.select(options=['请选择'], label='出发车站', value='请选择',
-                                                                  on_change=lambda e: self.on_station_change('start')).classes('w-full').props('outlined dense options-dense')
+                                                                  on_change=lambda e: self.on_station_change(
+                                                                      'start')).classes('w-full').props(
+                                'outlined dense options-dense')
 
                         with ui.column().classes('w-full gap-2'):
                             self.end_city_input = ui.input('到达城市', placeholder='如: 上海',
-                                                           on_change=lambda e: self.update_stations('end')).classes('w-full').props('outlined dense')
+                                                           on_change=lambda e: self.update_stations('end')).classes(
+                                'w-full').props('outlined dense')
                             self.end_station_select = ui.select(options=['请选择'], label='到达车站', value='请选择',
-                                                                on_change=lambda e: self.on_station_change('end')).classes('w-full').props('outlined dense options-dense')
+                                                                on_change=lambda e: self.on_station_change(
+                                                                    'end')).classes('w-full').props(
+                                'outlined dense options-dense')
 
                     ui.separator().classes('my-4')
 
                     with ui.grid(columns=1).classes('w-full md:grid-cols-2 gap-4'):
                         self.train_date_input = ui.input('乘车日期').classes('w-full').props('outlined dense type=date')
-                        self.train_list_input = ui.input('期望车次', placeholder='逗号分隔, 如: G1,G102').classes('w-full').props('outlined dense')
+                        self.train_list_input = ui.input('期望车次', placeholder='逗号分隔, 如: G1,G102').classes(
+                            'w-full').props('outlined dense')
 
                 with ui.card().classes('w-full shadow-md rounded-xl p-5 bg-white'):
                     with ui.row().classes('items-center mb-4 text-indigo-700'):
@@ -233,88 +244,104 @@ class WebApp:
 
                     with ui.grid(columns=1).classes('w-full md:grid-cols-3 gap-4'):
                         self.name_input = ui.input('姓名').classes('w-full').props('outlined dense')
-                        self.gender_select = ui.select(['男', '女'], value='男', label='性别').classes('w-full').props('outlined dense options-dense')
-                        self.passenger_class_select = ui.select(list(PASSENGER_CLASS_CODES.keys()), value='成人', label='票种').classes('w-full').props('outlined dense options-dense')
+                        self.gender_select = ui.select(['男', '女'], value='男', label='性别').classes('w-full').props(
+                            'outlined dense options-dense')
+                        self.passenger_class_select = ui.select(list(PASSENGER_CLASS_CODES.keys()), value='成人',
+                                                                label='票种').classes('w-full').props(
+                            'outlined dense options-dense')
 
                     with ui.grid(columns=1).classes('w-full md:grid-cols-2 gap-4 mt-4'):
                         self.id_input = ui.input('身份证号').classes('w-full').props('outlined dense')
                         self.phone_input = ui.input('手机号').classes('w-full').props('outlined dense')
 
                     with ui.grid(columns=1).classes('w-full md:grid-cols-2 gap-4 mt-4'):
-                        self.ticket_class_select = ui.select(list(TICKET_CLASS_CODES.keys()), value='二等座', label='优先席别', on_change=self.filter_position_options).classes('w-full').props('outlined dense options-dense')
-                        self.position_select = ui.select(list(POSITION_OPTIONS.keys()), value='不限', label='位置偏好').classes('w-full').props('outlined dense options-dense')
+                        self.ticket_class_select = ui.select(list(TICKET_CLASS_CODES.keys()), value='二等座',
+                                                             label='优先席别',
+                                                             on_change=self.filter_position_options).classes(
+                            'w-full').props('outlined dense options-dense')
+                        self.position_select = ui.select(list(POSITION_OPTIONS.keys()), value='不限',
+                                                         label='位置偏好').classes('w-full').props(
+                            'outlined dense options-dense')
 
+            # ==========================================
+            # 右侧边栏：任务控制与日志区 (宽屏占 1/3)
+            # ==========================================
             with ui.column().classes('w-full lg:w-1/3 flex flex-col gap-6'):
-
-                with ui.card().classes('w-full shadow-md rounded-xl p-5 bg-white flex flex-col flex-grow'):
+                # --- 卡片 1：核心控制台 ---
+                with ui.card().classes('w-full shadow-md rounded-xl p-5 bg-white'):
                     with ui.row().classes('items-center mb-4 text-indigo-700 justify-between w-full'):
                         with ui.row().classes('items-center'):
                             ui.icon('rocket_launch', size='sm')
                             ui.label('任务控制台').classes('text-lg font-bold ml-2')
-                        self.task_status_label = ui.label('待命').classes('text-gray-500 font-bold text-sm bg-gray-100 px-2 py-1 rounded')
+                        self.task_status_label = ui.label('待命').classes(
+                            'text-gray-500 font-bold text-sm bg-gray-100 px-2 py-1 rounded')
 
+                    # 运行模式切换 (独立卡片条UI)
                     with ui.row().classes(
                             'w-full items-center justify-between bg-blue-50/50 p-2 rounded-lg border border-blue-100 mb-4'):
                         with ui.row().classes('items-center gap-2'):
                             ui.icon('tune', size='sm', color='primary')
                             ui.label('运行模式').classes('font-bold text-sm text-gray-700')
                         self.mode_toggle = ui.toggle(
-                            ['单人', '多人'],
-                            value='单人',
-                            on_change=self.toggle_mode
+                            ['单人', '多人'], value='单人', on_change=self.toggle_mode
                         ).props('rounded unelevated spread no-caps').classes('shadow-sm bg-white')
 
-                    self.single_mode_container = ui.column().classes('w-full gap-3')
+                    # 全局公用的定时开抢
+                    with ui.row().classes('w-full items-center gap-2 mb-4'):
+                        self.start_time_input = ui.input('定时开抢 (留空立即执行)',
+                                                         placeholder='YYYY-MM-DD HH:MM:SS').classes('flex-grow').props(
+                            'outlined dense')
+                        ui.button(icon='my_location', on_click=self.set_current_time).props(
+                            'flat round color=primary').tooltip('同步当前系统时间')
+
+                    # 单人模式操作区
+                    self.single_mode_container = ui.column().classes('w-full gap-2')
                     with self.single_mode_container:
-                        with ui.row().classes('w-full items-center gap-2 mb-2'):
-                            self.start_time_input = ui.input('定时开抢 (留空立即执行)', placeholder='YYYY-MM-DD HH:MM:SS').classes('flex-grow').props('outlined dense')
-                            ui.button(icon='my_location', on_click=self.set_current_time).props('flat round color=primary').tooltip('同步当前系统时间')
+                        self.start_btn = ui.button('立即启动抢票', on_click=self.start_grab_task).classes(
+                            'w-full py-3 text-lg font-bold rounded-lg shadow-md').props('color=red-6 push icon=bolt')
 
-                        self.start_btn = ui.button('立即启动抢票', on_click=self.start_grab_task).classes('w-full py-3 text-lg font-bold rounded-lg shadow-md').props('color=red-6 push icon=bolt')
-
-                    ui.separator().classes('my-2')
-
-                    with ui.row().classes('w-full justify-between items-center mb-2 mt-2'):
-                        ui.label('终端日志').classes('font-bold text-gray-700 text-sm')
-                        ui.button(icon='delete_sweep', on_click=self.clear_logs).props('flat round size=sm color=grey').tooltip('清空日志')
-
-                    with ui.element('div').classes('w-full flex-1 min-h-[350px] flex flex-col rounded-lg overflow-hidden border border-gray-800 shadow-inner bg-[#0f172a]'):
-                        self.log_output = ui.log().classes(
-                            'terminal-log w-full flex-1 bg-transparent text-green-400 font-mono text-sm '
-                            'whitespace-pre-wrap break-words p-4 border-none outline-none ring-0 m-0'
-                        )
-
-                self.multi_mode_card = ui.card().classes('w-full shadow-md rounded-xl p-5 bg-white')
-                self.multi_mode_card.set_visibility(False)
-                with self.multi_mode_card:
-                    with ui.row().classes('items-center mb-4 text-indigo-700'):
-                        ui.icon('people', size='sm')
-                        ui.label('多人模式').classes('text-lg font-bold ml-2')
-
-                    ui.label('一个账号扫码登录后，可为多个乘车人分别创建独立抢票任务，无需重复扫码。').classes('text-sm text-gray-500 mb-3')
-
+                    # 多人模式操作区
                     self.multi_mode_container = ui.column().classes('w-full gap-3')
+                    self.multi_mode_container.set_visibility(False)
                     with self.multi_mode_container:
                         with ui.row().classes('w-full gap-2'):
                             self.multi_user_select = ui.select(
                                 options=list(self.users_data.keys()) if self.users_data else ['暂无配置'],
-                                label='选择乘车人档案',
-                                multiple=True
+                                label='选择乘车人档案', multiple=True
                             ).classes('flex-grow').props('outlined dense')
-                            ui.button('刷新', icon='refresh', on_click=self.refresh_multi_user_list).props('flat round color=primary')
+                            ui.button('刷新', icon='refresh', on_click=self.refresh_multi_user_list).props(
+                                'flat round color=primary')
 
                         with ui.row().classes('w-full gap-2'):
-                            ui.button('全部启动', on_click=self.start_multi_grab_task).classes('flex-grow py-2 font-bold').props('color=green-6 push icon=play_arrow')
-                            ui.button('全部停止', on_click=self.stop_all_tasks).classes('flex-grow py-2 font-bold').props('color=red-6 outline icon=stop')
+                            ui.button('全部启动', on_click=self.start_multi_grab_task).classes(
+                                'flex-grow py-2 font-bold').props('color=green-6 push icon=play_arrow')
+                            ui.button('全部停止', on_click=self.stop_all_tasks).classes(
+                                'flex-grow py-2 font-bold').props('color=red-6 outline icon=stop')
 
+                # --- 卡片 2：多人任务监控 (仅多人模式显示) ---
                 self.multi_task_panel = ui.card().classes('w-full shadow-md rounded-xl p-5 bg-white')
                 self.multi_task_panel.set_visibility(False)
                 with self.multi_task_panel:
                     with ui.row().classes('items-center mb-4 text-indigo-700'):
                         ui.icon('groups', size='sm')
-                        ui.label('多人任务监控').classes('text-lg font-bold ml-2')
-
+                        ui.label('多人任务并发监控').classes('text-lg font-bold ml-2')
                     self.multi_task_container = ui.column().classes('w-full gap-3')
+
+                # --- 卡片 3：全局终端日志 (固定在底部) ---
+                with ui.card().classes('w-full shadow-md rounded-xl p-5 bg-white flex flex-col flex-grow'):
+                    with ui.row().classes('w-full justify-between items-center mb-2'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('terminal', size='sm', color='gray-700')
+                            ui.label('系统全局日志').classes('font-bold text-gray-700 text-sm')
+                        ui.button(icon='delete_sweep', on_click=self.clear_logs).props(
+                            'flat round size=sm color=grey').tooltip('清空日志')
+
+                    with ui.element('div').classes(
+                            'w-full flex-1 min-h-[300px] flex flex-col rounded-lg overflow-hidden border border-gray-800 shadow-inner bg-[#0f172a]'):
+                        self.log_output = ui.log().classes(
+                            'terminal-log w-full flex-1 bg-transparent text-green-400 font-mono text-sm '
+                            'whitespace-pre-wrap break-words p-4 border-none outline-none ring-0 m-0'
+                        )
 
         self.log_timer = ui.timer(1, self.poll_logs)
         self.log_timer_active = True
@@ -521,14 +548,15 @@ class WebApp:
         """切换单人/多人模式"""
         mode_value = e.value if hasattr(e, 'value') else e
         self.multi_user_mode = (mode_value == '多人')
+
         if self.multi_user_mode:
             self.single_mode_container.set_visibility(False)
-            self.multi_mode_card.set_visibility(True)
+            self.multi_mode_container.set_visibility(True)
             self.multi_task_panel.set_visibility(True)
             self.refresh_multi_user_list()
         else:
             self.single_mode_container.set_visibility(True)
-            self.multi_mode_card.set_visibility(False)
+            self.multi_mode_container.set_visibility(False)
             self.multi_task_panel.set_visibility(False)
             self.stop_all_tasks()
 
