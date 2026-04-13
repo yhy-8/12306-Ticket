@@ -558,9 +558,9 @@ class WebApp:
         if hasattr(self.get_ticket, 'session'):
             user_get_ticket.session.cookies.update(self.get_ticket.session.cookies)
 
-        # 防止 UI 重复堆叠，启动前先移除该用户旧的 UI 卡片
+        # 防止 UI 重复堆叠，启动前先移除该用户旧的 UI 卡片 (添加 silent=True 静默执行，不弹提示)
         if user_name in self.task_ui_elements:
-            self._close_user_task_ui(user_name)
+            self._close_user_task_ui(user_name, silent=True)
 
         with self.multi_task_container:
             with ui.card().classes('w-full p-3 bg-gray-50 border-l-4 border-indigo-500') as card:
@@ -576,7 +576,8 @@ class WebApp:
 
                 with ui.row().classes('gap-2 w-full'):
                     stop_btn = ui.button('停止', icon='stop').classes('flex-grow').props('color=red-6 outline size=sm')
-                    close_btn = ui.button('关闭窗口', icon='close').classes('flex-grow').props('color=grey outline size=sm')
+                    close_btn = ui.button('关闭窗口', icon='close').classes('flex-grow').props(
+                        'color=grey outline size=sm')
 
         self.task_ui_elements[user_name] = {
             'card': card,
@@ -657,15 +658,27 @@ class WebApp:
             if user_name in self.active_tasks:
                 self.active_tasks[user_name]['running'] = False
 
-    def _stop_user_task(self, user_name):
+    def _stop_user_task(self, user_name, silent=False):
         """仅停止单个用户的抢票任务(保留UI窗口)"""
         if user_name in self.active_tasks:
-            self.active_tasks[user_name]['running'] = False
-            self._show_notification(f"已停止用户 {user_name} 的任务", "info")
+            # 记录被点击停止前，它是否真正在运行中
+            was_running = self.active_tasks[user_name].get('running', False)
 
-    def _close_user_task_ui(self, user_name):
+            # 1. 停止 UI 层的倒计时循环
+            self.active_tasks[user_name]['running'] = False
+
+            # 2. 向底层的 get_ticket 实例注入停止信号
+            get_ticket_instance = self.active_tasks[user_name].get('get_ticket')
+            if get_ticket_instance:
+                get_ticket_instance._force_stop = True
+
+            # 3.只有它之前真在运行，且非静默模式，才弹窗提示（防止重复弹或者系统清理时乱弹）
+            if was_running and not silent:
+                self._show_notification(f"已发送停止指令给用户 {user_name}", "info")
+
+    def _close_user_task_ui(self, user_name, silent=False):
         """停止任务并移除监控窗口"""
-        self._stop_user_task(user_name)
+        self._stop_user_task(user_name, silent=silent)
 
         # 移除UI卡片
         if user_name in self.task_ui_elements:
@@ -681,8 +694,10 @@ class WebApp:
     def stop_all_tasks(self):
         """停止所有用户的抢票任务"""
         for user_name in list(self.active_tasks.keys()):
-            self.active_tasks[user_name]['running'] = False
-        self._show_notification("已停止所有任务", "info")
+            # 批量停止时，让独立窗口闭嘴，只在最后发一条总通知
+            self._stop_user_task(user_name, silent=True)
+
+        self._show_notification("已向所有运行中的任务发送停止指令", "info")
 
     def _show_notification(self, message, notification_type='info'):
         self.pending_notifs.append((message, notification_type))

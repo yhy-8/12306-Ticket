@@ -43,6 +43,8 @@ class GetTicket:
         self.session.headers.update(self.BROWSER_HEADERS)
         self.sysbusy = "系统繁忙，请稍后重试！"
         self.logs = []
+        # 停止信号标志位
+        self._force_stop = False
 
     def _log(self, msg):
         current_time = datetime.now().strftime("%H:%M:%S")
@@ -301,6 +303,7 @@ class GetTicket:
         self.session.cookies.set('_uab_collina', self.generate_uab_collina(), domain='kyfw.12306.cn')
 
         for times in range(getattr(self.config, 'grabfunction_max_try_times', 6)):
+            if getattr(self, '_force_stop', False): return False
             response = self.session.post(url, data=data, headers=headers)
 
             self._logrecord("create_order_request_url", url)
@@ -334,6 +337,7 @@ class GetTicket:
         self.session.cookies.update({'_uab_collina': self.generate_uab_collina()})
 
         for times in range(getattr(self.config, 'grabfunction_max_try_times', 6)):
+            if getattr(self, '_force_stop', False): return False
             response = self.session.post(url, data=data, headers=headers)
 
             self._logrecord("init_order_url", url)
@@ -357,6 +361,7 @@ class GetTicket:
         data = {"_json_att": "", 'REPEAT_SUBMIT_TOKEN': self._REPEAT_SUBMIT_TOKEN}
 
         for times in range(getattr(self.config, 'grabfunction_max_try_times', 6)):
+            if getattr(self, '_force_stop', False): return False
             response = self.session.post(url, data=data, headers=headers)
 
             self._logrecord("check_passengers_url", url)
@@ -413,6 +418,7 @@ class GetTicket:
         self.noticket = False
 
         for times in range(getattr(self.config, 'grabfunction_max_try_times', 6)):
+            if getattr(self, '_force_stop', False): return False
             response = self.session.post(url, data=data, headers=headers)
 
             self._logrecord("check_order_info_url", url)
@@ -459,6 +465,7 @@ class GetTicket:
         self.session.cookies.update({'_uab_collina': self.generate_uab_collina()})
 
         for times in range(getattr(self.config, 'grabfunction_max_try_times', 6)):
+            if getattr(self, '_force_stop', False): return False
             response = self.session.post(url, data=data, headers=headers)
 
             self._logrecord("submit_order_url", url)
@@ -499,6 +506,7 @@ class GetTicket:
         self.session.cookies.update({'_uab_collina': self.generate_uab_collina()})
 
         for times in range(getattr(self.config, 'grabfunction_max_try_times', 6)):
+            if getattr(self, '_force_stop', False): return False
             response = self.session.post(url, data=data, headers=headers)
 
             self._logrecord("confirm_order_url", url)
@@ -528,6 +536,7 @@ class GetTicket:
             del self.session.cookies['_uab_collina']
 
         for times in range(getattr(self.config, 'grabfunction_max_try_times', 6)):
+            if getattr(self, '_force_stop', False): return False
             response = self.session.post(url, data=data, headers=headers)
 
             self._logrecord("base_log_url", url)
@@ -549,6 +558,11 @@ class GetTicket:
         })
 
         for times in range(getattr(self.config, 'grabfunction_max_try_times', 6) * 3):
+            # 循环级别监听中断
+            if getattr(self, '_force_stop', False):
+                self._log("[SYS] 接收到手动停止指令，放弃排队。")
+                return False
+
             response = self.session.get(url, headers=headers)
 
             self._logrecord("queue_order_url", url)
@@ -572,17 +586,33 @@ class GetTicket:
                     return False
 
                 if wait_time == 4 or wait_time == -100:
-                    time.sleep(15)
+                    # 将死等 15 秒打散，每秒检测一次是否按下停止按钮
+                    for _ in range(15):
+                        if getattr(self, '_force_stop', False):
+                            self._log("[SYS] 接收到手动停止指令，放弃排队。")
+                            return False
+                        time.sleep(1)
                     continue
 
             except ValueError:
                 pass
 
-            time.sleep(3)
+            # 将死等 3 秒打散
+            for _ in range(3):
+                if getattr(self, '_force_stop', False):
+                    self._log("[SYS] 接收到手动停止指令，放弃排队。")
+                    return False
+                time.sleep(1)
+
         return False
 
     def run(self):
+        # 1. 在查票前的死等循环中监听中断
         while True:
+            if getattr(self, '_force_stop', False):
+                self._log("[SYS] 任务已被手动终止。")
+                return 3  # 返回 3 代表人为终止
+
             if self.get_ticket_info():
                 break
             time.sleep(1)
@@ -590,9 +620,19 @@ class GetTicket:
         try_time = 0
         max_tries = getattr(self.config, 'max_try_times', 3)
         while try_time < max_tries:
+            # 2. 在抢票的轮次循环中监听中断
+            if getattr(self, '_force_stop', False):
+                self._log("[SYS] 任务已被手动终止。")
+                return 3
+
             try_time += 1
             self._log(f"=== 开始第 {try_time} 轮抢票尝试 ===")
             for train in getattr(self.config, 'TRAIN_ID_LIST', []):
+                # 3. 在切换车次时监听中断
+                if getattr(self, '_force_stop', False):
+                    self._log("[SYS] 任务已被手动终止。")
+                    return 3
+
                 if not train or train not in self.tickets:
                     self._log(f"跳过未配置或不在售列表的车次: {train}")
                     continue
@@ -607,7 +647,7 @@ class GetTicket:
                             continue
                     self.submit_order(train)
                     self.confirm_order(train)
-                    self.base_log()  # 执行基于数据的防封锁日志记录
+                    self.base_log()
                     if self.queue_order():
                         return 1
                 except Exception as e:
